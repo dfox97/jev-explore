@@ -12,6 +12,9 @@ snapshots preserve upstream MDX components, which may not render outside Mintlif
 | [Quick start / API keys](typesafe/introduction-quickstart.md) | https://docs.typesafe.ai/introduction/quickstart.md |
 | [HTTP API](typesafe/api.md) | https://docs.typesafe.ai/api.md |
 | [Score](typesafe/primitives-score.md) | https://docs.typesafe.ai/primitives/score.md |
+| [Choice](typesafe/primitives-choice.md) | https://docs.typesafe.ai/primitives/choice.md |
+| [Noul / applicability check](typesafe/primitives-noul.md) | https://docs.typesafe.ai/primitives/noul.md |
+| [Function calling cookbook](typesafe/cookbooks-function_calling.md) | https://docs.typesafe.ai/cookbooks/function_calling.md |
 | [State](typesafe/concepts-state.md) | https://docs.typesafe.ai/concepts/state.md |
 | [Building guide](typesafe/concepts-how-to-build-with-system-one.md) | https://docs.typesafe.ai/concepts/how-to-build-with-system-one.md |
 | [Composite scoring](typesafe/patterns-composite-scoring.md) | https://docs.typesafe.ai/patterns/composite-scoring.md |
@@ -23,6 +26,12 @@ The implementation uses the HTTP API directly, with Python's standard library.
 The existing [.pi TypeSafe skill](../.pi/skills/typesafe-ai/SKILL.md) guided the
 architecture: independent questions in one request per document, explicit rubrics,
 and deterministic weighting in code. No SDK installation or OpenAI account is needed.
+
+`choose.py` uses Choice for one of three feedback categories or game actions, with
+an independent Noul to check whether the input fits the scenario. Questions do not
+see each other's answers: the applicability check defines scope directly, and code
+combines the responses afterward. The three additional references above were fetched
+on 2026-09-20. A review flag is application behavior, not a fourth Choice option.
 
 Pi/OpenRouter is the development assistant setup. The TypeSafe quick start
 documents a separately issued TypeSafe key and TypeSafe endpoint. This integration

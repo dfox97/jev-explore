@@ -1,5 +1,55 @@
 # Document evaluation CLI
 
+## Three-choice examples
+
+`choose.py` provides two small classifiers using the same TypeSafe key and HTTP
+client as the document evaluator:
+
+| Example | Three choices |
+| --- | --- |
+| `feedback` | Bug report, Feature request, Praise |
+| `game` | Attack, Defend, Heal |
+
+Try either without a key (prints the request, not a simulated prediction):
+
+```bash
+python3 choose.py feedback --sample 1 --dry-run
+python3 choose.py game --sample 3 --dry-run
+```
+
+Enter your own input and TypeSafe key:
+
+```bash
+python3 choose.py feedback --text "The app crashes when I export a PDF" --prompt-key
+python3 choose.py game --text "I have 10/100 HP and 2 potions. The enemy is stunned this turn." --prompt-key
+```
+
+Omit `--text` to enter one line interactively, or pipe one line into stdin.
+Use `--list-samples` to see the three built-in inputs, `--sample 1` (or 2/3) to
+select one, and `--json` for machine-readable results. If `TYPESAFE_API_KEY` is
+already set, omit `--prompt-key`. OpenRouter credentials remain separate.
+
+The output shows the selected option, all three probabilities, and confidence.
+A separate Noul question checks whether the input fits the example; both questions
+run in the same request. Confidence below `--review-below-confidence` (default 0.5)
+or applicability below 0.8 marks the choice provisional and prints a review reason.
+These are illustrative thresholds, not validated accuracy guarantees. A successful
+request exits 0 even when review is needed; inspect `needs_review` in JSON. Errors
+exit 2. Neither example executes actions or changes a game state.
+
+Feedback uses one primary category: a concrete bug takes precedence over a feature
+request, then praise. Unrelated text or unsupported complaint types are flagged by
+the applicability check. This is single-label sorting, not sentiment analysis.
+
+The game example is a turn-based battle advisor: Attack damages the enemy, Defend
+reduces the next hit, and Heal consumes a potion and a turn. Describe player health,
+potion availability, and what the enemy is doing. The model recommends an action;
+it does not simulate combat or deterministically enforce game rules. Edit the
+instructions, options, and sample inputs in [feedback.json](examples/feedback.json)
+or [game.json](examples/game.json) to experiment.
+
+## Document scoring
+
 Evaluate UTF-8 text and Markdown documents on configurable dimensions using
 TypeSafe's Jev API. Requires Python 3.10+; no packages need installing.
 
