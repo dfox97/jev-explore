@@ -1,4 +1,45 @@
-# Document evaluation CLI
+# Jev examples: classify, choose, review, and score
+
+Four small Python examples using TypeSafe's Jev API. Requires **Python 3.10+**;
+the examples use the standard library, so no runtime packages need installing.
+
+| Example | What it does | TypeSafe primitives |
+| --- | --- | --- |
+| [Comment review](#comment-review) | Reviews changed Python comments: Keep, Shorten, or Remove | Choice + Noul |
+| [Feedback sorting](#three-choice-examples) | Sorts feedback: Bug report, Feature request, or Praise | Choice + Noul |
+| [Game action chooser](#three-choice-examples) | Recommends Attack, Defend, or Heal from a battle situation | Choice + Noul |
+| [Document scoring](#document-scoring) | Scores documents on configurable, weighted dimensions | Score |
+
+**Choice** selects an option and returns probabilities and confidence. **Noul**
+returns a 0–1 probability of yes; these examples use it to check input relevance
+or sufficient context. **Score** rates content against ordered descriptions.
+Jev supplies decisions; application code or a coding LLM performs any later action.
+
+## Quick start — no key needed
+
+Run these from the repository root:
+
+```bash
+python3 review_comments.py --demo --dry-run
+python3 choose.py feedback --sample 1 --dry-run
+python3 choose.py game --sample 3 --dry-run
+python3 evaluate.py examples/document.md --rubric examples/rubric.json --dry-run
+```
+
+Dry runs print the exact request, including source/input text. They make no API
+calls and do not produce simulated predictions. Replace `--dry-run` with
+`--prompt-key` to try a live evaluation with a hidden key prompt.
+
+## Keys and Pi / OpenRouter
+
+Get a **TypeSafe API key** from https://console.typesafe.ai/keys. The key prompt
+never saves it. For repeated runs, export `TYPESAFE_API_KEY` in your shell and
+omit `--prompt-key`. `.env` files are ignored by Git but are not automatically
+loaded. Do not put keys in example files or rubrics.
+
+Your Pi assistant can keep using OpenRouter. An OpenRouter key cannot replace the
+TypeSafe key. These examples run as ordinary shell commands, do not change Pi's
+settings, and do not call OpenRouter or generate replacement prose/code.
 
 ## Three-choice examples
 
@@ -50,19 +91,43 @@ or [game.json](examples/game.json) to experiment.
 
 ## Comment review
 
-For an agent-workflow example, review changed Python comments with Jev:
+Review added or changed Python comments in a Git diff. Jev chooses **Keep,
+Shorten, or Remove**, while a Noul checks whether the supplied code provides
+enough context. The bundled demo contains obvious narration, a useful constraint,
+and a repetitive explanation.
 
 ```bash
 python3 review_comments.py --demo --dry-run
 python3 review_comments.py --demo --prompt-key
 python3 review_comments.py --repo . --prompt-key --json
+python3 review_comments.py --repo . --staged --prompt-key --json
+python3 review_comments.py --repo . --base HEAD~1 --prompt-key --json
 ```
 
-This reports **keep / shorten / remove** plus a Noul context-sufficiency check.
-It never edits files. Use `--staged` for staged contents, or `--base <commit>` for
-changes since a task began. See the [comment-review design](docs/comment-review-design.md)
-for scope, limitations, and a production plan covering task-completion hooks,
-ESLint adapters, caching, and handing revisions back to a coding LLM.
+Default scope is working-tree changes against HEAD, including untracked,
+nonignored Python files. `--staged` reads the index; `--base <commit>` reviews
+changes since a chosen commit. A clean repository has no comments to review, so
+use `--demo` to try it immediately.
+
+The reviewer extracts actual `#` comments, groups adjacent comment lines, includes
+nearby code, and skips common directives, legal notices, and tracking comments.
+It does not review docstrings or JavaScript/TypeScript yet. Uncertain decisions
+are marked for review. JSON includes probabilities, confidence, model, source
+hashes, skipped comments, and errors. Edit the [comment policy](examples/comment_policy.json)
+to experiment with your team's conventions.
+
+**This example never edits files or installs an agent hook.** For a real workflow:
+
+```text
+Coding LLM finishes task → lint/tests → review Git diff with Jev
+    → send suggestions back to LLM → verify edits → finish
+```
+
+Jev selects the action; the coding LLM writes shortened comments or refactored code.
+A future guarded script could perform simple deletions. The
+[production design document](docs/comment-review-design.md) explains task baselines,
+hook integration, ESLint adapters, caching, stale-result protection, and bounded
+repair loops.
 
 ## Document scoring
 
@@ -81,16 +146,6 @@ For a real evaluation, enter your own **TypeSafe** key at the hidden prompt:
 python3 evaluate.py examples/document.md --rubric examples/rubric.json --prompt-key
 ```
 
-Get that key from https://console.typesafe.ai/keys. The prompt never saves it.
-For repeated runs, set `TYPESAFE_API_KEY` in your shell. `.env` files are ignored
-by Git but are not automatically loaded by this CLI. Do not put keys in rubrics.
-
-Your Pi assistant can keep using OpenRouter. Pi's OpenRouter credentials and this
-application's TypeSafe credentials are separate: an OpenRouter key cannot replace
-`TYPESAFE_API_KEY`. This CLI runs as a normal shell command from Pi and does not
-read or change Pi's settings. No OpenRouter calls or generated explanations are
-included in this initial version.
-
 Evaluate multiple files or a directory recursively:
 
 ```bash
@@ -104,7 +159,7 @@ goes to stderr; JSON or CSV goes to stdout unless `--output` is set. Exit codes:
 2 = configuration/input error. `--dry-run` always emits JSON request bodies,
 including document text, and never sends requests.
 
-## Define your dimensions
+### Define your dimensions
 
 Copy `examples/rubric.json`. Its clarity/actionability dimensions for project
 updates are illustrative, pending your actual document types and evaluation needs.
@@ -126,12 +181,14 @@ needs validation on your data. Confidence describes the distribution, not a
 guarantee of truth. A composite score is not an appropriate override for mandatory
 pass/fail requirements. Jev returns structured judgments, not prose explanations.
 
-## Limits and verification
+### Document input limits
 
 Only `.txt`, `.md`, and `.markdown` are supported. PDF/DOCX/OCR extraction is not
 included. Inputs are validated before sending any requests; documents are never
 silently truncated. A conservative 28,000-byte request limit helps stay under
 Jev's context budget without a tokenizer; split larger documents explicitly.
+
+## Shared API behavior and verification
 
 Requests time out after 60 seconds per attempt. Selected transient HTTP failures
 retry up to twice with backoff; numeric Retry-After values up to 60 seconds are
