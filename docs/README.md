@@ -1,5 +1,9 @@
 # Local documentation reference
 
+See [Comment review: example and production plan](comment-review-design.md) for
+the Git-diff reviewer, the distinction between Jev decisions and executing edits,
+and a roadmap for a real agent integration.
+
 Fetched from the official TypeSafe documentation on **2026-09-20**. These are
 local snapshots, not a guarantee of current limits or model versions. Consult
 these files first; refresh relevant pages when API behavior changes. Markdown

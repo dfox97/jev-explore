@@ -48,6 +48,22 @@ it does not simulate combat or deterministically enforce game rules. Edit the
 instructions, options, and sample inputs in [feedback.json](examples/feedback.json)
 or [game.json](examples/game.json) to experiment.
 
+## Comment review
+
+For an agent-workflow example, review changed Python comments with Jev:
+
+```bash
+python3 review_comments.py --demo --dry-run
+python3 review_comments.py --demo --prompt-key
+python3 review_comments.py --repo . --prompt-key --json
+```
+
+This reports **keep / shorten / remove** plus a Noul context-sufficiency check.
+It never edits files. Use `--staged` for staged contents, or `--base <commit>` for
+changes since a task began. See the [comment-review design](docs/comment-review-design.md)
+for scope, limitations, and a production plan covering task-completion hooks,
+ESLint adapters, caching, and handing revisions back to a coding LLM.
+
 ## Document scoring
 
 Evaluate UTF-8 text and Markdown documents on configurable dimensions using

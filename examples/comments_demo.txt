@@ -1,0 +1,25 @@
+def add_one(count):
+    # Increment count by one.
+    count += 1
+    return count
+
+
+def retry_delay(attempt):
+    # Cap the delay because the gateway disconnects clients after 30 seconds.
+    return min(2 ** attempt, 20)
+
+
+def display_name(user):
+    # We need a fallback for imports from the legacy service, which omit names.
+    # In other words, some imported records have no name field at all.
+    # That is why we provide a default name for those records without names.
+    return user.get("name", "Unknown")
+
+
+def example_strings():
+    return "# This is a string, not a comment."
+
+
+# fmt: off
+VALUES = [1, 2, 3]
+# fmt: on
