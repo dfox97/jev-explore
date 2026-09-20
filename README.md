@@ -128,3 +128,33 @@ python3 -m unittest discover -s tests -v
 
 Tests mock the API; no live evaluation has been performed without your key.
 Official API and architecture references are cached in [docs](docs/README.md).
+
+## Python formatting and linting
+
+Ruff formats Python with four-space indentation and an 88-character target line
+length, and checks imports, unused names, syntax/style errors, and common bug
+patterns. Configuration lives in `pyproject.toml`; cached upstream docs are excluded.
+See the [official Ruff configuration reference](https://docs.astral.sh/ruff/configuration/).
+The runtime CLIs still need no third-party packages.
+
+Install the pinned development tool:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+```
+
+Format and fix automatically fixable lint issues:
+
+```bash
+.venv/bin/ruff check --fix .
+.venv/bin/ruff format .
+```
+
+Check formatting, lint, and tests without modifying files:
+
+```bash
+.venv/bin/ruff format --check .
+.venv/bin/ruff check .
+python3 -m unittest discover -s tests -v
+```

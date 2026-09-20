@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+extend-exclude = ["docs", ".pi"]
+
+[tool.ruff.lint]
+# Style errors, unused/undefined names, import sorting, and common bug patterns.
+select = ["E4", "E7", "E9", "F", "I", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
