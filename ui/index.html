@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev in a harness — interactive guide</title>
+<meta name="description" content="Learn the TypeSafe Jev API by using it: primitives, harness integration patterns, and a context/token cost simulator.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">JEV</span>
+      <span class="brand-text">in a harness — interactive guide</span>
+    </div>
+    <nav id="tabs" class="tabs" aria-label="Sections">
+      <button class="tab" data-tab="why">Why</button>
+      <button class="tab" data-tab="playground">Playground</button>
+      <button class="tab" data-tab="harness">Cost lab</button>
+      <button class="tab" data-tab="patterns">Patterns</button>
+      <button class="tab" data-tab="reference">Reference</button>
+    </nav>
+    <span id="live-badge" class="badge badge-muted" title="Live API availability">checking…</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ============================ WHY ============================ -->
+<section class="panel" id="panel-why">
+  <h1>The problem: every turn re-sends everything</h1>
+
+  <p class="lede">
+    A coding agent harness accumulates context. Every tool call adds output, every
+    file read adds tokens, and on turn <em>n</em> you ship the entire history to the
+    model again. Cost per turn grows linearly, so session cost grows roughly
+    <strong>quadratically</strong> — while most of that context no longer matters.
+  </p>
+
+  <div class="grid-3">
+    <div class="card card-stat">
+      <div class="stat-value" id="why-context">—</div>
+      <div class="stat-label">tokens re-sent on turn 12 of the default session below</div>
+    </div>
+    <div class="card card-stat">
+      <div class="stat-value" id="why-naive">—</div>
+      <div class="stat-label">session cost with a naive harness</div>
+    </div>
+    <div class="card card-stat">
+      <div class="stat-value" id="why-jev">—</div>
+      <div class="stat-label">session cost when Jev decides instead</div>
+    </div>
+  </div>
+  <p class="hint">Numbers come from the <a href="#harness" data-goto="harness">cost lab</a> with its default settings. Every input there is editable.</p>
+
+  <h2>What Jev is</h2>
+  <p>
+    Jev is a decision model, not a chat model. You send <strong>state</strong> (text or
+    JSON) plus a map of typed <strong>questions</strong>, and you get typed answers back
+    in one round trip. It never writes prose. Three primitives:
+  </p>
+  <table class="table">
+    <thead><tr><th>Primitive</th><th>Question shape</th><th>Answer</th><th>Use when</th></tr></thead>
+    <tbody>
+      <tr><td><code>noul</code></td><td>yes/no</td><td><code>noul</code>: 0…1</td><td>a property may or may not hold (spam, injection, done, relevant)</td></tr>
+      <tr><td><code>choice</code></td><td>one of ≤255 named options</td><td><code>choice</code> + full <code>probabilities</code></td><td>one label or route must win</td></tr>
+      <tr><td><code>score</code></td><td>ordered levels (2…10)</td><td><code>score</code> + <code>legend</code> + <code>probabilities</code></td><td>degree along a rubric (severity, quality, difficulty)</td></tr>
+    </tbody>
+  </table>
+  <p>
+    All questions in one request are evaluated <strong>in parallel</strong> against the same
+    state, so adding questions is nearly free in latency. That is what makes
+    <em>speculative fan-out</em> practical: ask everything you might need, then let code
+    ignore the branches it does not take.
+  </p>
+
+  <h2>Why it changes harness economics</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Price</h3>
+      <p><strong>$0.042 per million input tokens. Output tokens are free.</strong>
+      A frontier LLM is roughly $3/Mtok input — about <strong>70×</strong> more,
+      before output tokens.</p>
+      <p class="hint">Published rate for Jev 1.13, per the official models page.</p>
+    </div>
+    <div class="card">
+      <h3>Speed</h3>
+      <p>Non-autoregressive: one forward pass, no text decoding.
+      Published median in a 3,080-utterance independent run: <strong>175 ms</strong>
+      vs 2,266 ms for a frontier LLM on the same task.</p>
+      <p class="hint">Fast enough to gate a new tool result before the next agent turn.</p>
+    </div>
+    <div class="card">
+      <h3>Shape</h3>
+      <p>Answers are typed and carry probabilities, so control flow stays in code.
+      You do not parse prose, and you do not give the model side effects.</p>
+    </div>
+    <div class="card">
+      <h3>Role</h3>
+      <p>The LLM still writes, plans and reasons. Jev answers the small bounded
+      questions around it: keep or drop, route or escalate, pass or block.</p>
+    </div>
+  </div>
+
+  <h2>The architecture in one line</h2>
+  <pre class="diagram">unstructured state  ->  Jev: bounded typed judgment  ->  ordinary code: thresholds, routing, side effects</pre>
+
+  <div class="callout callout-warn">
+    <strong>What Jev is not.</strong> Typed output guarantees the <em>interface</em>, not the
+    <em>truth</em>. Confidence describes the answer distribution, not correctness.
+    Thresholds must be fitted on your own data. Treat everything here as a mechanism to
+    measure, not a guarantee.
+  </div>
+
+  <h2>Where this guide goes next</h2>
+  <ol class="steps">
+    <li><a href="#playground" data-goto="playground">Playground</a> — build a request, see the exact JSON, simulate or send it live.</li>
+    <li><a href="#harness" data-goto="harness">Cost lab</a> — the four levers that cut tokens and spend, with the arithmetic exposed.</li>
+    <li><a href="#patterns" data-goto="patterns">Patterns</a> — when to use code, Jev, or an LLM; copy-paste snippets.</li>
+    <li><a href="#reference" data-goto="reference">Reference</a> — contract, limits, errors, key setup.</li>
+  </ol>
+</section>
+
+<!-- ========================= PLAYGROUND ========================= -->
+<section class="panel" id="panel-playground">
+  <h1>Playground</h1>
+  <p class="lede">
+    Build a real request body, watch it assemble, then either simulate the response
+    offline or send it to the live API. Nothing is sent anywhere unless you press
+    <em>Send live</em>.
+  </p>
+
+  <div class="pg-layout">
+    <div class="pg-col">
+      <div class="card">
+        <div class="card-head">
+          <h3>1. State</h3>
+          <select id="pg-preset" class="select-sm" aria-label="Load an example">
+            <option value="">Load an example…</option>
+          </select>
+        </div>
+        <p class="hint">
+          The state is the <em>everything</em>: the text, record, or JSON your questions
+          are evaluated against. Questions may point at nested fields with backticked
+          paths such as <code>ticket.body</code>.
+        </p>
+        <textarea id="pg-state" spellcheck="false" rows="7"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>2. Questions</h3>
+          <div class="btn-row">
+            <button class="btn btn-ghost" id="pg-add-noul">+ noul</button>
+            <button class="btn btn-ghost" id="pg-add-choice">+ choice</button>
+            <button class="btn btn-ghost" id="pg-add-score">+ score</button>
+          </div>
+        </div>
+        <p class="hint">
+          All questions in one request are evaluated in parallel. Ask everything you
+          might need — unused branches cost tokens but no extra round trip.
+        </p>
+        <div id="pg-questions"></div>
+      </div>
+
+      <div class="card" id="pg-live-card">
+        <div class="card-head"><h3>3. Send</h3></div>
+        <div id="pg-key-row">
+          <p class="hint">
+            Live calls run through this page's own origin. When served by the bundled
+            <code>serve.py</code>, the key comes from <code>TYPESAFE_API_KEY</code> in the
+            server environment and never reaches the browser.
+          </p>
+          <label class="field">
+            <span>TypeSafe API key <span class="hint">(only used if the server has none)</span></span>
+            <input id="pg-key" type="password" placeholder="ts_…" autocomplete="off">
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="pg-run-sim">Simulate</button>
+          <button class="btn" id="pg-run-live" disabled>Send live</button>
+          <button class="btn btn-ghost" id="pg-copy">Copy JSON</button>
+        </div>
+        <div id="pg-status" class="status"></div>
+      </div>
+    </div>
+
+    <div class="pg-col">
+      <div class="card">
+        <div class="card-head"><h3>Request body</h3><span class="pill" id="pg-token-est">—</span></div>
+        <pre id="pg-json" class="code"></pre>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Response</h3><span class="pill" id="pg-usage">—</span></div>
+        <div id="pg-answers" class="answers"></div>
+        <details id="pg-raw-details" hidden>
+          <summary>Raw JSON</summary>
+          <pre id="pg-response" class="code"></pre>
+        </details>
+      </div>
+      <div class="card" id="pg-live-help">
+        <h3>Why the live button may be off</h3>
+        <p>
+          GitHub Pages is a static host: your browser would have to call
+          <code>api.typesafe.ai</code> directly. That endpoint sends no
+          <code>Access-Control-Allow-Origin</code> for third-party origins, so the browser
+          blocks the response. This is a deliberate CORS restriction, not a bug in this page.
+        </p>
+        <p>Run the bundled local server instead — it serves this page and proxies the API,
+        keeping the key out of the browser:</p>
+        <pre class="code code-tight">export TYPESAFE_API_KEY=ts_…
+python3 ui/serve.py
+# open http://127.0.0.1:8765/</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= COST LAB ========================= -->
+<section class="panel" id="panel-harness">
+  <h1>Cost lab: how Jev reduces context and spend in a harness</h1>
+  <p class="lede">
+    A harness can use Jev four ways. Each one removes tokens from the context that
+    the expensive model has to read, or removes the expensive call entirely. Set the
+    assumptions below and compare the arithmetic.
+  </p>
+
+  <div class="grid-4 levers">
+    <div class="card lever">
+      <div class="lever-k">1</div>
+      <h3>Prune</h3>
+      <p>Jev judges each new tool result: keep it verbatim, or drop it.
+      Dropped tokens never enter the context window again.</p>
+      <p class="lever-q"><code>noul</code> — "Does this tool output still matter for the task?"</p>
+    </div>
+    <div class="card lever">
+      <div class="lever-k">2</div>
+      <h3>Route</h3>
+      <p>Jev scores the turn's difficulty and sends easy turns to a cheap model,
+      keeping the frontier model for hard ones.</p>
+      <p class="lever-q"><code>choice</code> — easy &middot; medium &middot; hard</p>
+    </div>
+    <div class="card lever">
+      <div class="lever-k">3</div>
+      <h3>Replace</h3>
+      <p>The turn only needed a decision (which tool, which file, continue or stop).
+      Jev answers it and no LLM turn happens at all.</p>
+      <p class="lever-q"><code>choice</code> — which action next</p>
+    </div>
+    <div class="card lever">
+      <div class="lever-k">4</div>
+      <h3>Verify</h3>
+      <p>Cheap semantic checks on every prompt, tool call and response — injection,
+      policy, tool errors, hallucination. Catches failures that otherwise burn a whole
+      LLM turn and a human's time.</p>
+      <p class="lever-q"><code>noul</code> per failure mode</p>
+    </div>
+  </div>
+
+  <div class="lab-layout">
+    <div class="card lab-controls">
+      <h3>Assumptions</h3>
+      <div id="h-controls"></div>
+      <button class="btn btn-ghost" id="h-reset">Reset to defaults</button>
+      <p class="hint">
+        Jev's price is the published rate and is fixed. Everything else is your
+        assumption — change it to match your models and your measurements.
+      </p>
+    </div>
+
+    <div class="lab-results">
+      <div class="grid-3">
+        <div class="card card-stat"><div class="stat-value" id="h-out-naive">—</div><div class="stat-label">naive harness, whole session</div></div>
+        <div class="card card-stat"><div class="stat-value" id="h-out-jev">—</div><div class="stat-label">Jev co-pilot, whole session</div></div>
+        <div class="card card-stat stat-good"><div class="stat-value" id="h-out-save">—</div><div class="stat-label">spend avoided</div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Cumulative LLM spend per turn</h3></div>
+        <div id="h-chart" class="chart"></div>
+        <div class="legend">
+          <span class="lg lg-naive"></span>naive
+          <span class="lg lg-summary"></span>LLM summarizes old turns
+          <span class="lg lg-jev"></span>Jev co-pilot
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Context the frontier model must read</h3></div>
+        <table class="table" id="h-table"></table>
+      </div>
+      <div class="card">
+        <details>
+          <summary><h3 class="inline-h3">The arithmetic</h3></summary>
+          <div id="h-formula" class="formula"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <h2>What the levers actually do to context</h2>
+  <table class="table">
+    <thead><tr><th>Lever</th><th>Without Jev</th><th>With Jev</th><th>Effect on the prompt</th></tr></thead>
+    <tbody>
+      <tr><td>Prune</td><td>every tool result re-sent forever</td><td>only survivors re-sent</td><td>growth per turn: <code>k</code> → <code>keep·k</code></td></tr>
+      <tr><td>Route</td><td>frontier model on every turn</td><td>cheap model on easy turns</td><td>same tokens, cheaper price</td></tr>
+      <tr><td>Replace</td><td>a full LLM turn per decision</td><td>no LLM turn at all</td><td>whole turn removed</td></tr>
+      <tr><td>Verify</td><td>failures found late, by a human</td><td>caught before the expensive call</td><td>avoids re-run turns</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Read this as a model, not a benchmark.</strong> The arithmetic below is exact;
+    the <em>keep rate</em>, <em>routing split</em> and <em>replace rate</em> are assumptions
+    you own. The honest procedure is: ship the lever in shadow mode, log how often Jev
+    agrees with what you would have done, then set the rate from your own logs. Independent
+    published measurements of the same idea: a 0.80-confidence gate that escalates the rest
+    to a frontier model matched that model's accuracy at roughly a quarter of the cost
+    (<a href="https://www.ayautomate.com/blog/jev-vs-llm-benchmark" target="_blank" rel="noreferrer">ayautomate</a>);
+    81.0% vs 84.4% accuracy, 175 ms vs 2,266 ms, $0.11 vs $2.42 per 1,000 items
+    (<a href="https://openrouter.ai/blog/insights/jev-vs-claude-opus-5-classification" target="_blank" rel="noreferrer">OpenRouter</a>).
+  </div>
+</section>
+
+<!-- ========================= PATTERNS ========================= -->
+<section class="panel" id="panel-patterns">
+  <h1>When to use Jev — and when not to</h1>
+
+  <p class="lede">Three tools are available for any step in a harness. Pick by what the step actually needs.</p>
+
+  <table class="table">
+    <thead><tr><th>Reach for</th><th>When</th><th>Examples</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Deterministic code</strong></td>
+        <td>the rule is exact, countable, or already known</td>
+        <td>arithmetic, schema validation, regex on a stable format, permission checks, retry policy, thresholds</td>
+      </tr>
+      <tr>
+        <td><strong>Jev</strong></td>
+        <td>the step is a <em>bounded</em> judgement over natural language, and you want it cheap, fast, and repeatable millions of times</td>
+        <td>keep/drop a tool result, route to a model or queue, is this injected, is this done, which candidate is relevant</td>
+      </tr>
+      <tr>
+        <td><strong>Frontier LLM</strong></td>
+        <td>the step must <em>produce</em> something open-ended, or reason over many steps</td>
+        <td>writing code, composing an answer, multi-hop planning, novel synthesis</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>The decision test</h2>
+  <ol class="steps">
+    <li>Can code answer it? <strong>Use code.</strong> A model that is not called cannot be wrong or expensive.</li>
+    <li>Is the answer one of a closed set of names, a probability that a property holds, or a position on an ordered rubric? <strong>That is Jev.</strong></li>
+    <li>Does the output have to be new prose, new code, or a long reasoning chain? <strong>That is the LLM.</strong></li>
+    <li>Is it a closed-set question but your accuracy bar is very high? <strong>Jev plus a confidence gate that escalates</strong> — you pay frontier prices only on the uncertain tail.</li>
+  </ol>
+
+  <h2>Harness patterns worth building</h2>
+  <div id="pattern-cards" class="pattern-grid"></div>
+
+  <h2>Anti-patterns</h2>
+  <div class="grid-2">
+    <div class="card"><h3>Using Jev for open-ended output</h3><p>It cannot write your summary or your code. Pair it with the LLM instead of replacing it.</p></div>
+    <div class="card"><h3>Asking two questions in one</h3><p>One narrow judgement per question. Split independent dimensions; combine in code. Related dimensions that must be judged together belong in one question, with the relationship stated.</p></div>
+    <div class="card"><h3>Treating confidence as permission</h3><p>Confidence summarises the answer distribution. It is not a correctness guarantee. Gate, then measure.</p></div>
+    <div class="card"><h3>Forgetting the cap</h3><p>Choice takes at most 255 options; Score takes 2–10 levels. For bigger taxonomies, walk a tree with Choice at each level.</p></div>
+  </div>
+</section>
+
+<!-- ======================== REFERENCE ======================== -->
+<section class="panel" id="panel-reference">
+  <h1>Reference</h1>
+
+  <div class="card">
+    <h3>Endpoint</h3>
+    <pre class="code code-tight">POST https://api.typesafe.ai/v1/systemone
+Authorization: Bearer &lt;API_KEY&gt;
+Content-Type: application/json</pre>
+    <p class="hint">Keys come from <a href="https://console.typesafe.ai/keys" target="_blank" rel="noreferrer">console.typesafe.ai/keys</a>. Keep them server-side.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>Request</h3>
+      <table class="table table-sm">
+        <tbody>
+          <tr><td><code>state</code></td><td>string, object or array — what the questions are evaluated against. Required.</td></tr>
+          <tr><td><code>model</code></td><td><code>"jev-latest"</code>, or a pinned id such as <code>"jev-1.13.0"</code>.</td></tr>
+          <tr><td><code>questions</code></td><td>map of id → question. Your ids come back unchanged and are <em>not</em> sent to the model.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Response</h3>
+      <table class="table table-sm">
+        <tbody>
+          <tr><td><code>model</code></td><td>the versioned id that answered — log this, it can change behind an alias.</td></tr>
+          <tr><td><code>answers[id]</code></td><td><code>noul</code> 0–1, or <code>choice</code>/<code>score</code> plus <code>probabilities</code> and <code>confidence</code>.</td></tr>
+          <tr><td><code>usage</code></td><td><code>input_tokens</code>, <code>output_tokens</code>. Output is free.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Question types</h3>
+    <pre class="code code-tight">// noul — probability that a statement holds
+{ "type": "noul",
+  "instructions": "Does this tool output still matter for the task?",
+  "criteria": { "true": "still needed", "false": "safe to drop" } }
+
+// choice — one of at most 255 named options
+{ "type": "choice",
+  "instructions": "Which model tier should handle this turn?",
+  "criteria": { "easy": "mechanical edit", "hard": "multi-file reasoning" } }
+
+// score — ordered levels, at least 2 and at most 10
+{ "type": "score",
+  "instructions": "How much does this turn depend on prior context?",
+  "criteria": ["self-contained", "needs some context", "needs the whole history"] }</pre>
+    <p class="hint">
+      <code>instructions</code> may be a string, object or array. Put the question in one
+      field and the data it references in others, then point at the data with backticked
+      names — the same way you point at a nested field of <code>state</code>.
+      <code>criteria</code> for <code>choice</code> is the option list; for
+      <code>score</code> it is the ordered level list.
+    </p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>Limits (Jev 1.13)</h3>
+      <table class="table table-sm">
+        <tbody>
+          <tr><td>Price</td><td>$42 per Btok = <strong>$0.042 / 1M input tokens</strong>; output free</td></tr>
+          <tr><td>Context</td><td>64k per request; 32k for <code>state</code> plus the longest question</td></tr>
+          <tr><td>Rate</td><td>250,000 tokens/s and 1,200 requests/min (adjusting dynamically)</td></tr>
+          <tr><td>Choice</td><td>≤ 255 options</td></tr>
+          <tr><td>Score</td><td>2–10 levels</td></tr>
+          <tr><td>Input</td><td>text only — pre-convert image, audio and video to text</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Errors</h3>
+      <table class="table table-sm">
+        <tbody>
+          <tr><td><code>401</code></td><td>missing or invalid key</td></tr>
+          <tr><td><code>403</code></td><td>authentication error (what this endpoint returns for a missing bearer token)</td></tr>
+          <tr><td><code>422</code></td><td>body failed validation; the response names the bad field</td></tr>
+          <tr><td><code>429</code></td><td>rate limit — retry with exponential backoff</td></tr>
+          <tr><td><code>529</code></td><td>overloaded — retry with exponential backoff</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Honour <code>Retry-After</code>. The official SDKs retry with backoff by default.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Minimal calls</h3>
+    <div class="code-tabs">
+      <button class="btn btn-ghost" data-code="curl">curl</button>
+      <button class="btn btn-ghost" data-code="python">python (stdlib)</button>
+      <button class="btn btn-ghost" data-code="js">javascript</button>
+    </div>
+    <pre class="code" id="ref-code"></pre>
+  </div>
+
+  <div class="card">
+    <h3>Key handling</h3>
+    <ul class="list">
+      <li>Server-side only. Never ship a key in a static site, a browser bundle, or a mobile app.</li>
+      <li>Use one key per environment; rotate on leak. Usage and limits are per key in the console.</li>
+      <li>Requests and responses are not used to train Jev. Check the legal pages for retention terms.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Sources</h3>
+    <ul class="list">
+      <li><a href="https://docs.typesafe.ai/introduction" target="_blank" rel="noreferrer">docs.typesafe.ai</a> — introduction, primitives, concepts, cookbooks</li>
+      <li><a href="https://docs.typesafe.ai/api" target="_blank" rel="noreferrer">HTTP API reference</a></li>
+      <li><a href="https://docs.typesafe.ai/models" target="_blank" rel="noreferrer">Models and limits</a></li>
+      <li><a href="https://docs.typesafe.ai/patterns/fan-out" target="_blank" rel="noreferrer">Speculative fan-out</a></li>
+      <li><a href="https://docs.typesafe.ai/concepts/use-case-map" target="_blank" rel="noreferrer">Use-case map</a></li>
+      <li><a href="https://github.com/AnotiaWang/awesome-jev" target="_blank" rel="noreferrer">awesome-jev</a> and <a href="https://classify.st/" target="_blank" rel="noreferrer">classify.st</a> — community use-case directories</li>
+    </ul>
+    <p class="hint">
+      Unofficial, unaffiliated teaching aid. Facts about the API are drawn from the
+      official documentation; the cost lab is a model with your own assumptions.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <span>Built for learning. Not affiliated with TypeSafe AI.</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -15,6 +15,30 @@ returns a 0–1 probability of yes; these examples use it to check input relevan
 or sufficient context. **Score** rates content against ordered descriptions.
 Jev supplies decisions; application code or a coding LLM performs any later action.
 
+## Interactive guide — Jev in a harness
+
+For learning the API and the harness economics, open the interactive guide in
+[`ui/`](ui/README.md). It is a static page (no build step, no packages) with five
+sections: why context growth is the cost problem, a request playground with
+offline simulation, a cost lab for the four levers (prune, route, replace,
+verify), integration patterns, and an API reference.
+
+```bash
+export TYPESAFE_API_KEY=ts_...
+python3 ui/serve.py
+# open http://127.0.0.1:8765/
+```
+
+The bundled `serve.py` serves the page and proxies the API from the server side.
+That proxy is required for live calls: `api.typesafe.ai` sends no
+`Access-Control-Allow-Origin` for third-party origins, so a browser cannot call it
+directly from a static host. The key stays in the server environment and is never
+sent to the browser.
+
+The cost lab's arithmetic is exact and shown on the page; its keep rate, routing
+split, and replace rate are assumptions you set. Jev's price ($0.042 per 1M input
+tokens, output free) is the published rate.
+
 ## Quick start — no key needed
 
 Run these from the repository root:
