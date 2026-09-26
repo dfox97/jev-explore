@@ -28,6 +28,17 @@ The page probes `GET /api/health` on load. When the proxy is present it enables
 environment and is never sent to the browser. If no environment key is set, the
 page offers a local-only key field so you can still try a call.
 
+To open the guide in a browser on another device, bind the Tailscale address:
+
+```bash
+python3 ui/serve.py --tailscale     # http://<host>.<tailnet>.ts.net:8765/
+```
+
+Binding a non-loopback interface turns the process into a proxy anyone on that
+network can use. With `TYPESAFE_API_KEY` exported they can spend your key, so
+prefer leaving it unset and pasting a key into the page per browser. The server
+prints this warning when it binds a non-loopback address.
+
 The proxy accepts only `POST /api/evaluate` with a JSON body containing
 `{ "payload": <systemone request> }`. It never forwards an arbitrary URL and
 never echoes the key.

@@ -13,6 +13,7 @@ Usage:
     export TYPESAFE_API_KEY=ts_...
     python3 ui/serve.py            # http://127.0.0.1:8765/
     python3 ui/serve.py --port 9000
+    python3 ui/serve.py --tailscale   # reachable from other tailnet devices
 
 Standard library only.
 """
@@ -22,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -152,6 +154,38 @@ class Handler(SimpleHTTPRequestHandler):
         sys.stderr.write("  %s\n" % (fmt % args))
 
 
+def tailscale_ip() -> str | None:
+    """Return this host's Tailscale IPv4 address, or None if unavailable."""
+    try:
+        out = subprocess.run(
+            ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return None
+
+
+def tailscale_dns_name() -> str | None:
+    try:
+        out = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        data = json.loads(out.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+    name = (data.get("Self") or {}).get("DNSName") or ""
+    return name.rstrip(".") or None
+
+
 def make_server(port: int, host: str, api_key: str | None) -> ThreadingHTTPServer:
     handler = type("BoundHandler", (Handler,), {"api_key": api_key})
     return ThreadingHTTPServer((host, port), handler)
@@ -159,18 +193,53 @@ def make_server(port: int, host: str, api_key: str | None) -> ThreadingHTTPServe
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--host", default=None, help="interface to bind (default 127.0.0.1)"
+    )
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--tailscale",
+        action="store_true",
+        help="bind this host's Tailscale IPv4 so other tailnet devices can reach it",
+    )
     args = parser.parse_args()
 
-    api_key = os.environ.get("TYPESAFE_API_KEY", "").strip() or None
-    server = make_server(args.port, args.host, api_key)
+    host = args.host
+    if args.tailscale:
+        if host:
+            parser.error("use either --host or --tailscale, not both")
+        host = tailscale_ip()
+        if not host:
+            parser.error("Tailscale is not available; check 'tailscale ip -4'")
+    if not host:
+        host = "127.0.0.1"
 
-    print(f"Jev guide  ->  http://{args.host}:{args.port}/")
-    print(
-        f"Live API   ->  {'enabled (key from TYPESAFE_API_KEY)' if api_key else 'disabled (no TYPESAFE_API_KEY set)'}"
-    )
-    print("The key is never written to disk or sent to the browser.")
+    api_key = os.environ.get("TYPESAFE_API_KEY", "").strip() or None
+    try:
+        server = make_server(args.port, host, api_key)
+    except OSError as exc:
+        print(f"cannot bind {host}:{args.port}: {exc}", file=sys.stderr)
+        return 1
+
+    loopback = host in {"127.0.0.1", "::1", "localhost"}
+    print(f"Jev guide  ->  http://{host}:{args.port}/")
+    if args.tailscale:
+        dns = tailscale_dns_name()
+        if dns:
+            print(f"Tailnet    ->  http://{dns}:{args.port}/")
+    if api_key:
+        print("Live API   ->  enabled (key from TYPESAFE_API_KEY)")
+    else:
+        print("Live API   ->  enabled per request; paste a key into the page")
+    if not loopback:
+        print(
+            "Note       ->  bound to a non-loopback interface. Anyone who can reach\n"
+            "               this port can use the proxy. With TYPESAFE_API_KEY set,\n"
+            "               that means they can spend your key; without it, each\n"
+            "               caller must supply their own.",
+            file=sys.stderr,
+        )
+    print("The key is never written to disk.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
